@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Flappy Melon - Owen Watermelon V3</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #08160f;
+      color: #f1f5f9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #game-container {
+      position: relative;
+      width: 360px;
+      height: 520px;
+      max-width: 95vw;
+      background: #092015;
+      border: 3px solid #16402a;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: pointer;
+    }
+    #hud {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      right: 14px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .hud-box {
+      background: rgba(8, 22, 15, 0.8);
+      border: 1px solid #16402a;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(8, 22, 15, 0.88);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    #overlay h2 { font-size: 32px; color: #ff3b5c; margin-bottom: 6px; }
+    #overlay p { font-size: 15px; color: #a7f3d0; margin-bottom: 18px; }
+    .btn {
+      background: #10b981;
+      color: #064e3b;
+      font-weight: 700;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #34d399; }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="hud">
+      <div class="hud-box">Score: <span id="score-val">0</span></div>
+      <div class="hud-box">Best: <span id="best-val">0</span></div>
+    </div>
+    <canvas id="canvas" width="360" height="520"></canvas>
+    <div id="overlay">
+      <h2 id="title">Flappy Melon</h2>
+      <p id="desc">Press Space or Tap to Flap</p>
+      <button class="btn" id="start-btn">Start Flight</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const titleEl = document.getElementById('title');
+    const descEl = document.getElementById('desc');
+    const startBtn = document.getElementById('start-btn');
+    const scoreVal = document.getElementById('score-val');
+    const bestVal = document.getElementById('best-val');
+
+    let best = parseInt(localStorage.getItem('owen_flappy_best') || '0');
+    bestVal.textContent = best;
+
+    let bird = { x: 60, y: 220, vy: 0, gravity: 0.38, jump: -6.5, r: 16 };
+    let pipes = [];
+    let score = 0;
+    let state = 'MENU'; // 'MENU' | 'PLAYING' | 'GAMEOVER'
+    let frame = 0;
+
+    function flap() {
+      if (state === 'PLAYING') {
+        bird.vy = bird.jump;
+      } else if (state === 'MENU' || state === 'GAMEOVER') {
+        startGame();
+      }
+    }
+
+    function startGame() {
+      state = 'PLAYING';
+      overlay.style.display = 'none';
+      bird.y = 220;
+      bird.vy = 0;
+      pipes = [];
+      score = 0;
+      frame = 0;
+      scoreVal.textContent = '0';
+    }
+
+    function gameOver() {
+      state = 'GAMEOVER';
+      titleEl.textContent = 'Splashed!';
+      descEl.textContent = `Score: ${score}`;
+      startBtn.textContent = 'Fly Again';
+      overlay.style.display = 'flex';
+      if (score > best) {
+        best = score;
+        bestVal.textContent = best;
+        localStorage.setItem('owen_flappy_best', best);
+      }
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' || e.key === 'ArrowUp' || e.key === 'w') {
+        e.preventDefault();
+        flap();
+      }
+    });
+
+    canvas.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      flap();
+    });
+
+    startBtn.addEventListener('click', startGame);
+
+    function loop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Background stars / clouds
+      ctx.fillStyle = '#0f2d1e';
+      ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(0, canvas.height - 42, canvas.width, 3);
+
+      if (state === 'PLAYING') {
+        frame++;
+        bird.vy += bird.gravity;
+        bird.y += bird.vy;
+
+        // Ground / Ceiling hit
+        if (bird.y + bird.r > canvas.height - 40 || bird.y - bird.r < 0) {
+          gameOver();
+        }
+
+        // Spawn pipes
+        if (frame % 90 === 0) {
+          const gap = 125;
+          const topHeight = Math.floor(Math.random() * (canvas.height - 40 - gap - 60)) + 30;
+          pipes.push({
+            x: canvas.width,
+            top: topHeight,
+            bottom: canvas.height - 40 - topHeight - gap,
+            passed: false
+          });
+        }
+
+        // Update pipes
+        for (let i = pipes.length - 1; i >= 0; i--) {
+          const p = pipes[i];
+          p.x -= 2.2;
+
+          // Check pass
+          if (!p.passed && p.x + 48 < bird.x) {
+            p.passed = true;
+            score++;
+            scoreVal.textContent = score;
+          }
+
+          // Collision
+          if (
+            bird.x + bird.r > p.x &&
+            bird.x - bird.r < p.x + 48 &&
+            (bird.y - bird.r < p.top || bird.y + bird.r > canvas.height - 40 - p.bottom)
+          ) {
+            gameOver();
+          }
+
+          if (p.x < -60) pipes.splice(i, 1);
+        }
+      }
+
+      // Draw pipes
+      pipes.forEach(p => {
+        // Top pipe
+        ctx.fillStyle = '#16402a';
+        ctx.fillRect(p.x, 0, 48, p.top);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(p.x - 2, p.top - 16, 52, 16);
+
+        // Bottom pipe
+        const botY = canvas.height - 40 - p.bottom;
+        ctx.fillStyle = '#16402a';
+        ctx.fillRect(p.x, botY, 48, p.bottom);
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(p.x - 2, botY, 52, 16);
+      });
+
+      // Draw Bird (Juicy Watermelon Slice)
+      ctx.save();
+      ctx.translate(bird.x, bird.y);
+      ctx.rotate(Math.min(Math.PI / 4, Math.max(-Math.PI / 4, bird.vy * 0.08)));
+      ctx.font = '28px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🍉', 0, 0);
+      ctx.restore();
+
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>

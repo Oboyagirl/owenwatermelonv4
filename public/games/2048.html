@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>2048 Neon - Owen Watermelon V3</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #08160f;
+      color: #f1f5f9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #game-container {
+      width: 360px;
+      max-width: 95vw;
+      background: #0c2016;
+      border: 3px solid #16402a;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    #header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .scores {
+      display: flex;
+      gap: 8px;
+    }
+    .score-box {
+      background: #08160f;
+      border: 1px solid #16402a;
+      border-radius: 6px;
+      padding: 4px 10px;
+      text-align: center;
+    }
+    .score-title {
+      font-size: 10px;
+      color: #6ee7b7;
+      text-transform: uppercase;
+    }
+    .score-val {
+      font-size: 16px;
+      font-weight: 700;
+      font-family: monospace;
+      color: #fff;
+    }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-gap: 8px;
+      background: #08160f;
+      padding: 8px;
+      border-radius: 8px;
+      aspect-ratio: 1 / 1;
+      position: relative;
+    }
+    .tile {
+      background: #0e291b;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 800;
+      font-family: monospace;
+      transition: all 0.12s ease-in-out;
+    }
+    .tile[data-val="2"] { background: #064e3b; color: #a7f3d0; }
+    .tile[data-val="4"] { background: #047857; color: #ecfdf5; }
+    .tile[data-val="8"] { background: #059669; color: #ffffff; }
+    .tile[data-val="16"] { background: #10b981; color: #022c22; }
+    .tile[data-val="32"] { background: #34d399; color: #022c22; }
+    .tile[data-val="64"] { background: #f59e0b; color: #fff; }
+    .tile[data-val="128"] { background: #ea580c; color: #fff; font-size: 20px; }
+    .tile[data-val="256"] { background: #e11d48; color: #fff; font-size: 20px; }
+    .tile[data-val="512"] { background: #ec4899; color: #fff; font-size: 20px; }
+    .tile[data-val="1024"] { background: #8b5cf6; color: #fff; font-size: 18px; }
+    .tile[data-val="2048"] { background: #ff2d55; color: #fff; font-size: 18px; box-shadow: 0 0 16px #ff2d55; }
+
+    #controls {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 12px;
+    }
+    .btn {
+      background: #10b981;
+      color: #064e3b;
+      font-weight: 700;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn:hover { background: #34d399; }
+    #overlay {
+      position: absolute;
+      inset: 8px;
+      background: rgba(8, 22, 15, 0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="header">
+      <h2 style="font-size: 22px; color: #10b981; font-weight: 800;">2048</h2>
+      <div class="scores">
+        <div class="score-box">
+          <div class="score-title">Score</div>
+          <div id="score" class="score-val">0</div>
+        </div>
+        <div class="score-box">
+          <div class="score-title">Best</div>
+          <div id="best" class="score-val">0</div>
+        </div>
+      </div>
+    </div>
+    <div id="grid">
+      <div id="overlay">
+        <h2 id="overlay-title" style="font-size: 26px; color: #ff3b5c; margin-bottom: 8px;">Game Over!</h2>
+        <button class="btn" onclick="init()">Try Again</button>
+      </div>
+    </div>
+    <div id="controls">
+      <span style="font-size: 12px; color: #6ee7b7; align-self: center;">Swipe or Arrow keys to move</span>
+      <button class="btn" onclick="init()">New Game</button>
+    </div>
+  </div>
+
+  <script>
+    let board = [];
+    let score = 0;
+    let best = parseInt(localStorage.getItem('owen_2048_best') || '0');
+    document.getElementById('best').textContent = best;
+    const gridEl = document.getElementById('grid');
+    const overlay = document.getElementById('overlay');
+
+    function init() {
+      board = [
+        [0,0,0,0],
+        [0,0,0,0],
+        [0,0,0,0],
+        [0,0,0,0]
+      ];
+      score = 0;
+      document.getElementById('score').textContent = '0';
+      overlay.style.display = 'none';
+      spawnTile();
+      spawnTile();
+      render();
+    }
+
+    function spawnTile() {
+      const empty = [];
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          if (board[r][c] === 0) empty.push({ r, c });
+        }
+      }
+      if (empty.length > 0) {
+        const rand = empty[Math.floor(Math.random() * empty.length)];
+        board[rand.r][rand.c] = Math.random() > 0.1 ? 2 : 4;
+      }
+    }
+
+    function render() {
+      const overlayEl = document.getElementById('overlay');
+      gridEl.innerHTML = '';
+      gridEl.appendChild(overlayEl);
+
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const val = board[r][c];
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+          if (val > 0) {
+            tile.setAttribute('data-val', val);
+            tile.textContent = val;
+          }
+          gridEl.appendChild(tile);
+        }
+      }
+      document.getElementById('score').textContent = score;
+      if (score > best) {
+        best = score;
+        document.getElementById('best').textContent = best;
+        localStorage.setItem('owen_2048_best', best);
+      }
+    }
+
+    function slide(row) {
+      let arr = row.filter(val => val);
+      for (let i = 0; i < arr.length - 1; i++) {
+        if (arr[i] === arr[i + 1]) {
+          arr[i] *= 2;
+          score += arr[i];
+          arr.splice(i + 1, 1);
+        }
+      }
+      while (arr.length < 4) arr.push(0);
+      return arr;
+    }
+
+    function move(direction) {
+      let rotated = false;
+      let changed = false;
+      const prev = JSON.stringify(board);
+
+      if (direction === 'LEFT') {
+        for (let r = 0; r < 4; r++) board[r] = slide(board[r]);
+      } else if (direction === 'RIGHT') {
+        for (let r = 0; r < 4; r++) board[r] = slide(board[r].reverse()).reverse();
+      } else if (direction === 'UP') {
+        for (let c = 0; c < 4; c++) {
+          let col = [board[0][c], board[1][c], board[2][c], board[3][c]];
+          col = slide(col);
+          for (let r = 0; r < 4; r++) board[r][c] = col[r];
+        }
+      } else if (direction === 'DOWN') {
+        for (let c = 0; c < 4; c++) {
+          let col = [board[3][c], board[2][c], board[1][c], board[0][c]];
+          col = slide(col);
+          for (let r = 0; r < 4; r++) board[r][c] = col[3 - r];
+        }
+      }
+
+      if (JSON.stringify(board) !== prev) {
+        spawnTile();
+        render();
+        checkGameOver();
+      }
+    }
+
+    function checkGameOver() {
+      // Check for empty cells
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          if (board[r][c] === 0) return;
+          if (c < 3 && board[r][c] === board[r][c + 1]) return;
+          if (r < 3 && board[r][c] === board[r + 1][c]) return;
+        }
+      }
+      overlay.style.display = 'flex';
+    }
+
+    window.addEventListener('keydown', e => {
+      if (['ArrowUp', 'w', 'W'].includes(e.key)) { e.preventDefault(); move('UP'); }
+      if (['ArrowDown', 's', 'S'].includes(e.key)) { e.preventDefault(); move('DOWN'); }
+      if (['ArrowLeft', 'a', 'A'].includes(e.key)) { e.preventDefault(); move('LEFT'); }
+      if (['ArrowRight', 'd', 'D'].includes(e.key)) { e.preventDefault(); move('RIGHT'); }
+    });
+
+    let touchStartX = 0, touchStartY = 0;
+    gridEl.addEventListener('touchstart', e => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    });
+    gridEl.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 30) move('RIGHT');
+        else if (dx < -30) move('LEFT');
+      } else {
+        if (dy > 30) move('DOWN');
+        else if (dy < -30) move('UP');
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

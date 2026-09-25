@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Watermelon Merge - Owen Watermelon V3</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #08160f;
+      color: #f1f5f9;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #game-container {
+      position: relative;
+      width: 380px;
+      height: 600px;
+      max-width: 95vw;
+      max-height: 95vh;
+      background: #0c2016;
+      border: 3px solid #16402a;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    #header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      background: rgba(8, 22, 15, 0.9);
+      border-bottom: 2px solid #16402a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      z-index: 10;
+    }
+    .metric { display: flex; flex-direction: column; }
+    .label { font-size: 11px; text-transform: uppercase; color: #6ee7b7; letter-spacing: 0.5px; }
+    .val { font-size: 18px; font-weight: 700; color: #fff; font-family: monospace; }
+    #next-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #next-canvas { width: 34px; height: 34px; }
+    #canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(8, 22, 15, 0.88);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+    #overlay h2 { font-size: 32px; color: #ff3b5c; margin-bottom: 8px; }
+    #overlay p { font-size: 16px; color: #a7f3d0; margin-bottom: 24px; }
+    .btn {
+      background: #10b981;
+      color: #064e3b;
+      font-weight: 700;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #34d399; transform: scale(1.04); }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="header">
+      <div class="metric">
+        <span class="label">Score</span>
+        <span id="score-val" class="val">0</span>
+      </div>
+      <div id="next-preview">
+        <div class="metric" style="align-items: flex-end;">
+          <span class="label">Next</span>
+        </div>
+        <canvas id="next-canvas" width="40" height="40"></canvas>
+      </div>
+      <div class="metric" style="align-items: flex-end;">
+        <span class="label">Best</span>
+        <span id="best-val" class="val">0</span>
+      </div>
+    </div>
+    <canvas id="canvas" width="380" height="600"></canvas>
+    <div id="overlay">
+      <h2>Game Over!</h2>
+      <p id="final-score">Score: 0</p>
+      <button class="btn" id="restart-btn">Play Again</button>
+    </div>
+  </div>
+
+  <script>
+    // Audio synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq, type = 'sine', duration = 0.08) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch(e) {}
+    }
+
+    const FRUITS = [
+      { name: 'Cherry', r: 14, color: '#e11d48', points: 2, icon: '🍒' },
+      { name: 'Strawberry', r: 20, color: '#f43f5e', points: 4, icon: '🍓' },
+      { name: 'Grape', r: 26, color: '#a855f7', points: 8, icon: '🍇' },
+      { name: 'Decopon', r: 33, color: '#f97316', points: 16, icon: '🍊' },
+      { name: 'Persimmon', r: 40, color: '#fb923c', points: 32, icon: '🍑' },
+      { name: 'Apple', r: 48, color: '#ef4444', points: 64, icon: '🍎' },
+      { name: 'Pear', r: 56, color: '#eab308', points: 128, icon: '🍐' },
+      { name: 'Peach', r: 64, color: '#f472b6', points: 256, icon: '🍑' },
+      { name: 'Pineapple', r: 74, color: '#facc15', points: 512, icon: '🍍' },
+      { name: 'Melon', r: 84, color: '#4ade80', points: 1024, icon: '🍈' },
+      { name: 'Watermelon', r: 96, color: '#10b981', points: 2048, icon: '🍉' }
+    ];
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const nextCanvas = document.getElementById('next-canvas');
+    const nextCtx = nextCanvas.getContext('2d');
+
+    const scoreEl = document.getElementById('score-val');
+    const bestEl = document.getElementById('best-val');
+    const overlay = document.getElementById('overlay');
+    const finalScoreEl = document.getElementById('final-score');
+    const restartBtn = document.getElementById('restart-btn');
+
+    let score = 0;
+    let best = parseInt(localStorage.getItem('owen_wm_best') || '0');
+    bestEl.textContent = best;
+
+    let fruits = [];
+    let particles = [];
+    let currentFruitIndex = 0;
+    let nextFruitIndex = 1;
+    let dropX = 190;
+    let canDrop = true;
+    let gameOver = false;
+    const DANGER_Y = 110;
+
+    function randomInitialIndex() {
+      return Math.floor(Math.random() * 4); // 0 to 3
+    }
+
+    function init() {
+      fruits = [];
+      particles = [];
+      score = 0;
+      scoreEl.textContent = '0';
+      gameOver = false;
+      canDrop = true;
+      overlay.style.display = 'none';
+      currentFruitIndex = randomInitialIndex();
+      nextFruitIndex = randomInitialIndex();
+      renderNextPreview();
+    }
+
+    function renderNextPreview() {
+      nextCtx.clearRect(0, 0, 40, 40);
+      const f = FRUITS[nextFruitIndex];
+      nextCtx.fillStyle = f.color;
+      nextCtx.beginPath();
+      nextCtx.arc(20, 20, 14, 0, Math.PI * 2);
+      nextCtx.fill();
+      nextCtx.font = '14px sans-serif';
+      nextCtx.textAlign = 'center';
+      nextCtx.textBaseline = 'middle';
+      nextCtx.fillText(f.icon, 20, 20);
+    }
+
+    class Fruit {
+      constructor(x, y, level) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 0.4;
+        this.vy = 0;
+        this.level = level;
+        this.r = FRUITS[level].r;
+        this.color = FRUITS[level].color;
+        this.icon = FRUITS[level].icon;
+        this.merged = false;
+      }
+
+      update() {
+        this.vy += 0.35; // gravity
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx *= 0.98;
+
+        // Wall collisions
+        if (this.x - this.r < 0) {
+          this.x = this.r;
+          this.vx = -this.vx * 0.4;
+        } else if (this.x + this.r > canvas.width) {
+          this.x = canvas.width - this.r;
+          this.vx = -this.vx * 0.4;
+        }
+
+        // Floor collision
+        if (this.y + this.r > canvas.height) {
+          this.y = canvas.height - this.r;
+          this.vy = -this.vy * 0.25;
+          this.vx *= 0.92;
+        }
+      }
+
+      draw() {
+        ctx.save();
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Highlights
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        ctx.arc(this.x - this.r * 0.3, this.y - this.r * 0.3, this.r * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Icon
+        ctx.font = `${Math.max(12, this.r * 0.8)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.icon, this.x, this.y + 1);
+        ctx.restore();
+      }
+    }
+
+    function createParticles(x, y, color) {
+      for (let i = 0; i < 14; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 4 + 1;
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          color
+        });
+      }
+    }
+
+    function handleCollisions() {
+      for (let i = 0; i < fruits.length; i++) {
+        for (let j = i + 1; j < fruits.length; j++) {
+          const a = fruits[i];
+          const b = fruits[j];
+          if (a.merged || b.merged) continue;
+
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const minDist = a.r + b.r;
+
+          if (dist < minDist) {
+            // Check merge
+            if (a.level === b.level && a.level < FRUITS.length - 1) {
+              a.merged = true;
+              b.merged = true;
+              const newLevel = a.level + 1;
+              const midX = (a.x + b.x) / 2;
+              const midY = (a.y + b.y) / 2;
+
+              createParticles(midX, midY, FRUITS[newLevel].color);
+              playBeep(260 + newLevel * 45, 'triangle', 0.12);
+
+              score += FRUITS[newLevel].points;
+              scoreEl.textContent = score;
+              if (score > best) {
+                best = score;
+                bestEl.textContent = best;
+                localStorage.setItem('owen_wm_best', best);
+              }
+
+              setTimeout(() => {
+                fruits = fruits.filter(f => !f.merged);
+                const mergedFruit = new Fruit(midX, midY, newLevel);
+                fruits.push(mergedFruit);
+              }, 10);
+              return;
+            }
+
+            // Normal elastic collision response
+            const overlap = minDist - dist;
+            const nx = dx / (dist || 1);
+            const ny = dy / (dist || 1);
+
+            a.x -= nx * overlap * 0.5;
+            a.y -= ny * overlap * 0.5;
+            b.x += nx * overlap * 0.5;
+            b.y += ny * overlap * 0.5;
+
+            const kx = a.vx - b.vx;
+            const ky = a.vy - b.vy;
+            const p = 2 * (nx * kx + ny * ky) / 2;
+
+            a.vx -= p * nx * 0.5;
+            a.vy -= p * ny * 0.5;
+            b.vx += p * nx * 0.5;
+            b.vy += p * ny * 0.5;
+          }
+        }
+      }
+    }
+
+    function dropFruit() {
+      if (!canDrop || gameOver) return;
+      canDrop = false;
+      const f = new Fruit(dropX, 75, currentFruitIndex);
+      fruits.push(f);
+      playBeep(180, 'sine', 0.05);
+
+      currentFruitIndex = nextFruitIndex;
+      nextFruitIndex = randomInitialIndex();
+      renderNextPreview();
+
+      setTimeout(() => {
+        canDrop = true;
+      }, 550);
+    }
+
+    // Input handling
+    function setX(clientX) {
+      const rect = canvas.getBoundingClientRect();
+      const scale = canvas.width / rect.width;
+      let x = (clientX - rect.left) * scale;
+      const currentR = FRUITS[currentFruitIndex].r;
+      dropX = Math.max(currentR, Math.min(canvas.width - currentR, x));
+    }
+
+    canvas.addEventListener('mousemove', e => setX(e.clientX));
+    canvas.addEventListener('click', () => dropFruit());
+
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (e.touches[0]) setX(e.touches[0].clientX);
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', e => {
+      e.preventDefault();
+      dropFruit();
+    }, { passive: false });
+
+    restartBtn.addEventListener('click', init);
+
+    // Main game loop
+    function loop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Danger line
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, DANGER_Y);
+      ctx.lineTo(canvas.width, DANGER_Y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw drop preview
+      if (canDrop && !gameOver) {
+        const cur = FRUITS[currentFruitIndex];
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        ctx.moveTo(dropX, 75);
+        ctx.lineTo(dropX, canvas.height);
+        ctx.stroke();
+
+        ctx.fillStyle = cur.color;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(dropX, 75, cur.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = `${Math.max(12, cur.r * 0.8)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cur.icon, dropX, 76);
+        ctx.globalAlpha = 1.0;
+      }
+
+      // Physics steps
+      for (let s = 0; s < 3; s++) {
+        for (let f of fruits) f.update();
+        handleCollisions();
+      }
+
+      // Draw fruits & check game over
+      let highFruitCount = 0;
+      for (let f of fruits) {
+        f.draw();
+        if (f.y - f.r < DANGER_Y && Math.abs(f.vy) < 0.1 && Math.abs(f.vx) < 0.1) {
+          highFruitCount++;
+        }
+      }
+
+      if (highFruitCount > 0 && fruits.length > 3) {
+        setTimeout(() => {
+          if (!gameOver && highFruitCount > 0) {
+            gameOver = true;
+            finalScoreEl.textContent = `Score: ${score}`;
+            overlay.style.display = 'flex';
+            playBeep(120, 'sawtooth', 0.3);
+          }
+        }, 1200);
+      }
+
+      // Particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.03;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = p.life;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    init();
+    loop();
+  </script>
+</body>
+</html>

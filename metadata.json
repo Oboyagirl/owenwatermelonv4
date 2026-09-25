@@ -1,0 +1,7 @@
+{
+  "name": "Owen Watermelon V3",
+  "description": "Unblocked games website template with built-in iframe games catalog, tab cloaker, web proxy tools, and customizable games JSON.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

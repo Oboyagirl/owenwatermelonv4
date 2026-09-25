@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyber Snake - Owen Watermelon V3</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #08160f;
+      color: #f1f5f9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #game-container {
+      position: relative;
+      width: 420px;
+      height: 480px;
+      max-width: 95vw;
+      background: #0c2016;
+      border: 3px solid #16402a;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    #header {
+      height: 52px;
+      background: rgba(8, 22, 15, 0.95);
+      border-bottom: 2px solid #16402a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 18px;
+    }
+    .metric { display: flex; flex-direction: column; }
+    .label { font-size: 11px; text-transform: uppercase; color: #6ee7b7; }
+    .val { font-size: 18px; font-weight: 700; color: #fff; font-family: monospace; }
+    canvas {
+      flex: 1;
+      width: 100%;
+      background: #08160f;
+      display: block;
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(8, 22, 15, 0.9);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    #overlay h2 { font-size: 32px; color: #ff3b5c; margin-bottom: 8px; }
+    #overlay p { font-size: 16px; color: #a7f3d0; margin-bottom: 20px; }
+    .btn {
+      background: #10b981;
+      color: #064e3b;
+      font-weight: 700;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #34d399; }
+    #mobile-controls {
+      display: grid;
+      grid-template-columns: repeat(3, 44px);
+      grid-gap: 6px;
+      margin-top: 10px;
+    }
+    .ctrl-btn {
+      background: #16402a;
+      color: #fff;
+      border: 1px solid #2d6a4f;
+      border-radius: 6px;
+      font-size: 18px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="header">
+      <div class="metric">
+        <span class="label">Score</span>
+        <span id="score-val" class="val">0</span>
+      </div>
+      <div class="metric" style="align-items: center;">
+        <span class="label">Speed</span>
+        <span id="speed-val" class="val">Normal</span>
+      </div>
+      <div class="metric" style="align-items: flex-end;">
+        <span class="label">Best</span>
+        <span id="best-val" class="val">0</span>
+      </div>
+    </div>
+    <canvas id="canvas" width="400" height="400"></canvas>
+    <div id="overlay">
+      <h2 id="overlay-title">Game Over</h2>
+      <p id="overlay-msg">Score: 0</p>
+      <button class="btn" id="restart-btn">Play Again (Space)</button>
+    </div>
+  </div>
+
+  <div id="mobile-controls">
+    <div></div>
+    <button class="ctrl-btn" onclick="handleDir('UP')">▲</button>
+    <div></div>
+    <button class="ctrl-btn" onclick="handleDir('LEFT')">◀</button>
+    <button class="ctrl-btn" onclick="handleDir('DOWN')">▼</button>
+    <button class="ctrl-btn" onclick="handleDir('RIGHT')">▶</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score-val');
+    const bestEl = document.getElementById('best-val');
+    const overlay = document.getElementById('overlay');
+    const overlayMsg = document.getElementById('overlay-msg');
+    const restartBtn = document.getElementById('restart-btn');
+
+    const GRID_SIZE = 20;
+    const TILE_COUNT = 20;
+
+    let score = 0;
+    let best = parseInt(localStorage.getItem('owen_snake_best') || '0');
+    bestEl.textContent = best;
+
+    let snake = [];
+    let food = { x: 15, y: 15, type: 'melon' };
+    let dx = 1;
+    let dy = 0;
+    let nextDx = 1;
+    let nextDy = 0;
+    let gameLoop = null;
+    let isGameOver = false;
+
+    function resetGame() {
+      snake = [
+        { x: 10, y: 10 },
+        { x: 9, y: 10 },
+        { x: 8, y: 10 }
+      ];
+      dx = 1;
+      dy = 0;
+      nextDx = 1;
+      nextDy = 0;
+      score = 0;
+      scoreEl.textContent = '0';
+      isGameOver = false;
+      overlay.style.display = 'none';
+      spawnFood();
+      if (gameLoop) clearInterval(gameLoop);
+      gameLoop = setInterval(update, 100);
+    }
+
+    function spawnFood() {
+      while (true) {
+        const rx = Math.floor(Math.random() * TILE_COUNT);
+        const ry = Math.floor(Math.random() * TILE_COUNT);
+        const onSnake = snake.some(seg => seg.x === rx && seg.y === ry);
+        if (!onSnake) {
+          food = { x: rx, y: ry, isSpecial: Math.random() > 0.8 };
+          break;
+        }
+      }
+    }
+
+    function handleDir(dir) {
+      if (dir === 'UP' && dy === 0) { nextDx = 0; nextDy = -1; }
+      if (dir === 'DOWN' && dy === 0) { nextDx = 0; nextDy = 1; }
+      if (dir === 'LEFT' && dx === 0) { nextDx = -1; nextDy = 0; }
+      if (dir === 'RIGHT' && dx === 0) { nextDx = 1; nextDy = 0; }
+    }
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { e.preventDefault(); handleDir('UP'); }
+      else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); handleDir('DOWN'); }
+      else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { e.preventDefault(); handleDir('LEFT'); }
+      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { e.preventDefault(); handleDir('RIGHT'); }
+      else if (e.code === 'Space' && isGameOver) { resetGame(); }
+    });
+
+    restartBtn.addEventListener('click', resetGame);
+
+    function update() {
+      dx = nextDx;
+      dy = nextDy;
+
+      const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+
+      // Wall collision check
+      if (head.x < 0 || head.x >= TILE_COUNT || head.y < 0 || head.y >= TILE_COUNT) {
+        return gameOver();
+      }
+
+      // Self collision
+      for (let seg of snake) {
+        if (seg.x === head.x && seg.y === head.y) {
+          return gameOver();
+        }
+      }
+
+      snake.unshift(head);
+
+      // Eat food check
+      if (head.x === food.x && head.y === food.y) {
+        score += food.isSpecial ? 25 : 10;
+        scoreEl.textContent = score;
+        if (score > best) {
+          best = score;
+          bestEl.textContent = best;
+          localStorage.setItem('owen_snake_best', best);
+        }
+        spawnFood();
+      } else {
+        snake.pop();
+      }
+
+      draw();
+    }
+
+    function gameOver() {
+      isGameOver = true;
+      clearInterval(gameLoop);
+      overlayMsg.textContent = `Score: ${score}`;
+      overlay.style.display = 'flex';
+    }
+
+    function draw() {
+      // Clear
+      ctx.fillStyle = '#08160f';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Subtle Grid
+      ctx.strokeStyle = '#0e291b';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= TILE_COUNT; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * GRID_SIZE, 0);
+        ctx.lineTo(i * GRID_SIZE, canvas.height);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, i * GRID_SIZE);
+        ctx.lineTo(canvas.width, i * GRID_SIZE);
+        ctx.stroke();
+      }
+
+      // Draw Food
+      ctx.font = '16px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(food.isSpecial ? '🍉' : '🍓', food.x * GRID_SIZE + GRID_SIZE/2, food.y * GRID_SIZE + GRID_SIZE/2);
+
+      // Draw Snake
+      snake.forEach((seg, i) => {
+        if (i === 0) {
+          ctx.fillStyle = '#10b981';
+          ctx.fillRect(seg.x * GRID_SIZE + 1, seg.y * GRID_SIZE + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+          ctx.fillStyle = '#fff';
+          // eyes
+          ctx.fillRect(seg.x * GRID_SIZE + 4, seg.y * GRID_SIZE + 4, 3, 3);
+          ctx.fillRect(seg.x * GRID_SIZE + 12, seg.y * GRID_SIZE + 4, 3, 3);
+        } else {
+          ctx.fillStyle = i % 2 === 0 ? '#059669' : '#047857';
+          ctx.fillRect(seg.x * GRID_SIZE + 2, seg.y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+        }
+      });
+    }
+
+    resetGame();
+  </script>
+</body>
+</html>

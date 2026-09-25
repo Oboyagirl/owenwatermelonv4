@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyber Pong - Owen Watermelon V3</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #08160f;
+      color: #f1f5f9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #game-container {
+      position: relative;
+      width: 520px;
+      height: 400px;
+      max-width: 95vw;
+      background: #06110b;
+      border: 3px solid #16402a;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+    #header {
+      height: 48px;
+      background: rgba(8, 22, 15, 0.95);
+      border-bottom: 2px solid #16402a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+    }
+    .score-board {
+      font-family: monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .score-board span { color: #10b981; }
+    .mode-toggle {
+      background: #16402a;
+      color: #a7f3d0;
+      border: 1px solid #2d6a4f;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    canvas {
+      flex: 1;
+      width: 100%;
+      background: #08160f;
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(8, 22, 15, 0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    #overlay h2 { font-size: 28px; color: #ff3b5c; margin-bottom: 6px; }
+    #overlay p { font-size: 15px; color: #a7f3d0; margin-bottom: 18px; }
+    .btn {
+      background: #10b981;
+      color: #064e3b;
+      font-weight: 700;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #34d399; }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="header">
+      <div class="score-board">P1: <span id="p1-score">0</span></div>
+      <button class="mode-toggle" id="mode-btn">Mode: Vs Bot</button>
+      <div class="score-board">P2: <span id="p2-score">0</span></div>
+    </div>
+    <canvas id="canvas" width="520" height="352"></canvas>
+    <div id="overlay">
+      <h2 id="winner-title">Player 1 Wins!</h2>
+      <p>First to 7 Points</p>
+      <button class="btn" id="restart-btn">Play Again</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const p1ScoreEl = document.getElementById('p1-score');
+    const p2ScoreEl = document.getElementById('p2-score');
+    const modeBtn = document.getElementById('mode-btn');
+    const overlay = document.getElementById('overlay');
+    const winnerTitle = document.getElementById('winner-title');
+    const restartBtn = document.getElementById('restart-btn');
+
+    let mode = 'BOT'; // 'BOT' | '2P'
+    let p1Score = 0;
+    let p2Score = 0;
+    const targetScore = 7;
+    let gameOver = false;
+
+    const p1 = { x: 16, y: 140, w: 10, h: 70, vy: 0, speed: 6 };
+    const p2 = { x: 520 - 26, y: 140, w: 10, h: 70, vy: 0, speed: 6 };
+    const ball = { x: 260, y: 176, r: 6, vx: 5, vy: 3 };
+
+    const keys = {};
+
+    function resetRound() {
+      ball.x = canvas.width / 2;
+      ball.y = canvas.height / 2;
+      ball.vx = (Math.random() > 0.5 ? 1 : -1) * 5;
+      ball.vy = (Math.random() - 0.5) * 6;
+    }
+
+    function resetGame() {
+      p1Score = 0;
+      p2Score = 0;
+      p1ScoreEl.textContent = '0';
+      p2ScoreEl.textContent = '0';
+      gameOver = false;
+      overlay.style.display = 'none';
+      resetRound();
+    }
+
+    modeBtn.addEventListener('click', () => {
+      mode = mode === 'BOT' ? '2P' : 'BOT';
+      modeBtn.textContent = mode === 'BOT' ? 'Mode: Vs Bot' : 'Mode: 2 Player (W/S vs ↑/↓)';
+      resetGame();
+    });
+
+    restartBtn.addEventListener('click', resetGame);
+
+    window.addEventListener('keydown', e => { keys[e.key] = true; });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseY = e.clientY - rect.top;
+      p1.y = Math.max(0, Math.min(canvas.height - p1.h, mouseY - p1.h / 2));
+    });
+
+    function loop() {
+      if (!gameOver) {
+        // Player 1 controls (W / S)
+        if (keys['w'] || keys['W']) p1.y = Math.max(0, p1.y - p1.speed);
+        if (keys['s'] || keys['S']) p1.y = Math.min(canvas.height - p1.h, p1.y + p1.speed);
+
+        // Player 2 / Bot
+        if (mode === '2P') {
+          if (keys['ArrowUp']) p2.y = Math.max(0, p2.y - p2.speed);
+          if (keys['ArrowDown']) p2.y = Math.min(canvas.height - p2.h, p2.y + p2.speed);
+        } else {
+          // Smart bot with reaction delay
+          const targetY = ball.y - p2.h / 2;
+          p2.y += (targetY - p2.y) * 0.085;
+          p2.y = Math.max(0, Math.min(canvas.height - p2.h, p2.y));
+        }
+
+        // Ball movement
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+
+        // Top/Bottom bounce
+        if (ball.y - ball.r < 0) {
+          ball.y = ball.r;
+          ball.vy = -ball.vy;
+        } else if (ball.y + ball.r > canvas.height) {
+          ball.y = canvas.height - ball.r;
+          ball.vy = -ball.vy;
+        }
+
+        // Left paddle hit
+        if (
+          ball.x - ball.r < p1.x + p1.w &&
+          ball.y > p1.y &&
+          ball.y < p1.y + p1.h
+        ) {
+          ball.x = p1.x + p1.w + ball.r;
+          const hit = (ball.y - (p1.y + p1.h / 2)) / (p1.h / 2);
+          ball.vx = Math.abs(ball.vx) * 1.05;
+          ball.vy = hit * 6;
+        }
+
+        // Right paddle hit
+        if (
+          ball.x + ball.r > p2.x &&
+          ball.y > p2.y &&
+          ball.y < p2.y + p2.h
+        ) {
+          ball.x = p2.x - ball.r;
+          const hit = (ball.y - (p2.y + p2.h / 2)) / (p2.h / 2);
+          ball.vx = -Math.abs(ball.vx) * 1.05;
+          ball.vy = hit * 6;
+        }
+
+        // Score points
+        if (ball.x < 0) {
+          p2Score++;
+          p2ScoreEl.textContent = p2Score;
+          if (p2Score >= targetScore) {
+            gameOver = true;
+            winnerTitle.textContent = mode === 'BOT' ? 'Bot Wins!' : 'Player 2 Wins!';
+            overlay.style.display = 'flex';
+          } else {
+            resetRound();
+          }
+        } else if (ball.x > canvas.width) {
+          p1Score++;
+          p1ScoreEl.textContent = p1Score;
+          if (p1Score >= targetScore) {
+            gameOver = true;
+            winnerTitle.textContent = 'Player 1 Wins!';
+            overlay.style.display = 'flex';
+          } else {
+            resetRound();
+          }
+        }
+      }
+
+      // Draw
+      ctx.fillStyle = '#08160f';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Center divider
+      ctx.strokeStyle = '#16402a';
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Paddles
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(p1.x, p1.y, p1.w, p1.h);
+      ctx.fillStyle = '#ff2d55';
+      ctx.fillRect(p2.x, p2.y, p2.w, p2.h);
+
+      // Ball
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      requestAnimationFrame(loop);
+    }
+
+    resetGame();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
